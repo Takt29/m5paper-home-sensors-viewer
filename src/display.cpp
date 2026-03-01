@@ -9,6 +9,7 @@ static const char* WEEKDAY_JP[] = {"日", "月", "火", "水", "木", "金", "�
 
 static const int SCREEN_W = 540;
 static const int SCREEN_H = 960;
+static const int BLOCK_GAP_Y = 48;
 static const int MARGIN = 24;
 
 static const int FONT_DATE   = 32;
@@ -69,13 +70,14 @@ static void drawCO2Face(int cx, int cy, int r, uint16_t co2) {
     }
 }
 
-static void drawTag(int x, int y, const char* text) {
+static void drawTagRight(int rightX, int y, const char* text) {
     canvas.setTextSize(FONT_TAG);
-    canvas.setTextDatum(TL_DATUM);
+    canvas.setTextDatum(TR_DATUM);
     int px = 12, py = 6;
-    int tw = canvas.drawString(text, x + px, y + py);
+    int tw = canvas.drawString(text, rightX - px, y + py + 4); // 日本語フォントの中心線のずれを調整 (TODO: フォントサイズを考慮する)
     int th = FONT_TAG + 4;
-    canvas.drawRoundRect(x, y, tw + px * 2, th + py * 2, 8, COL_BLACK);
+    int totalW = tw + px * 2;
+    canvas.drawRoundRect(rightX - totalW, y, totalW, th + py * 2, 8, COL_BLACK);
 }
 
 static void drawLabeledValue(int x, int y, int colW,
@@ -162,12 +164,12 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
     canvas.fillRect(MARGIN, divY1, SCREEN_W - MARGIN * 2, 4, COL_BLACK);
 
     // ========== CO2 Sensor Section ==========
-    int secY = divY1 + 20;
+    int secY = divY1 + BLOCK_GAP_Y;
 
     canvas.setTextSize(FONT_SECT);
     canvas.setTextDatum(TL_DATUM);
     canvas.drawString(CO2_SENSOR_LOCATION, MARGIN + 8, secY);
-    drawTag(380, secY - 2, "CO2センサー");
+    drawTagRight(SCREEN_W - MARGIN, secY - 2, "CO2センサー");
 
     int cardX = MARGIN;
     int cardY = secY + 50;
@@ -209,7 +211,7 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
         char buf[8];
         if (co2.hasData) snprintf(buf, sizeof(buf), "%.1f", co2.temperature);
         else snprintf(buf, sizeof(buf), "--.-");
-        drawLabeledValue(MARGIN + 8, rowY, halfW, "温度", buf, "°C");
+        drawLabeledValue(MARGIN + 8, rowY, halfW, "気温", buf, "°C");
     }
     {
         char buf[8];
@@ -222,16 +224,16 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
     drawLastUpdated(updateY, co2);
 
     // ========== Divider ==========
-    int divY2 = updateY + 32;
+    int divY2 = updateY + BLOCK_GAP_Y;
     canvas.drawLine(MARGIN, divY2, SCREEN_W - MARGIN, divY2, COL_BLACK);
 
     // ========== Outdoor Section ==========
-    int sec2Y = divY2 + 20;
+    int sec2Y = divY2 + BLOCK_GAP_Y;
 
     canvas.setTextSize(FONT_SECT);
     canvas.setTextDatum(TL_DATUM);
     canvas.drawString(OUTDOOR_METER_LOCATION, MARGIN + 8, sec2Y);
-    drawTag(350, sec2Y - 2, "防水温湿度計");
+    drawTagRight(SCREEN_W - MARGIN, sec2Y - 2, "防水温湿度計");
 
     int row2Y = sec2Y + 50;
 
@@ -239,7 +241,7 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
         char buf[8];
         if (outdoor.hasData) snprintf(buf, sizeof(buf), "%.1f", outdoor.temperature);
         else snprintf(buf, sizeof(buf), "--.-");
-        drawLabeledValue(MARGIN + 8, row2Y, halfW, "外気温", buf, "°C");
+        drawLabeledValue(MARGIN + 8, row2Y, halfW, "気温", buf, "°C");
     }
     {
         char buf[8];
