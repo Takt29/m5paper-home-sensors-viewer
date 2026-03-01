@@ -94,9 +94,22 @@ static void drawLabeledValue(int x, int y, int colW,
     canvas.drawString(unit, x + vw + 4, y + FONT_LABEL + 8 + FONT_VALUE);
 }
 
-void displayInit() {
+static void drawLastUpdated(int y, const DisplaySensorData& data) {
+    canvas.setTextSize(FONT_UPDATE);
+    canvas.setTextDatum(TR_DATUM);
+    if (data.hasData) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "最終更新: %02d:%02d",
+                 data.updateHour, data.updateMin);
+        canvas.drawString(buf, SCREEN_W - MARGIN, y);
+    }
+}
+
+void displayInit(bool fullClear) {
     M5.EPD.SetRotation(90);
-    M5.EPD.Clear(true);
+    if (fullClear) {
+        M5.EPD.Clear(true);
+    }
 
     canvas.createCanvas(SCREEN_W, SCREEN_H);
     canvas.setTextColor(COL_BLACK, COL_WHITE);
@@ -125,13 +138,12 @@ void displayInit() {
     }
 }
 
-void displayDraw(const SensorData& co2, const SensorData& outdoor,
-                 int year, int month, int day, int wday,
-                 int hour, int minute, int batteryPct) {
+void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
+                 int year, int month, int day, int wday, int batteryPct) {
     canvas.fillCanvas(COL_WHITE);
     canvas.setTextColor(COL_BLACK, COL_WHITE);
 
-    // ========== Header: Date + Battery ==========
+    // ========== Header ==========
     canvas.setTextSize(FONT_DATE);
     canvas.setTextDatum(TL_DATUM);
     char dateBuf[32];
@@ -146,11 +158,10 @@ void displayDraw(const SensorData& co2, const SensorData& outdoor,
     canvas.drawString(battBuf, SCREEN_W - MARGIN - 36, 24);
     drawBatteryIcon(SCREEN_W - MARGIN - 32, 26, batteryPct);
 
-    // ========== Thick divider ==========
     int divY1 = 68;
     canvas.fillRect(MARGIN, divY1, SCREEN_W - MARGIN * 2, 4, COL_BLACK);
 
-    // ========== Living Room Section ==========
+    // ========== CO2 Sensor Section ==========
     int secY = divY1 + 20;
 
     canvas.setTextSize(FONT_SECT);
@@ -158,7 +169,6 @@ void displayDraw(const SensorData& co2, const SensorData& outdoor,
     canvas.drawString(CO2_SENSOR_LOCATION, MARGIN + 8, secY);
     drawTag(380, secY - 2, "CO2センサー");
 
-    // CO2 card
     int cardX = MARGIN;
     int cardY = secY + 50;
     int cardW = SCREEN_W - MARGIN * 2;
@@ -192,7 +202,6 @@ void displayDraw(const SensorData& co2, const SensorData& outdoor,
 
     canvas.setTextColor(COL_BLACK, COL_WHITE);
 
-    // Temperature & Humidity (label above value)
     int rowY = cardY + cardH + 20;
     int halfW = (SCREEN_W - MARGIN * 2) / 2;
 
@@ -209,26 +218,14 @@ void displayDraw(const SensorData& co2, const SensorData& outdoor,
         drawLabeledValue(MARGIN + halfW, rowY, halfW, "湿度", buf, "%");
     }
 
-    // Last updated
     int updateY = rowY + FONT_LABEL + 8 + FONT_VALUE + 12;
-    canvas.setTextSize(FONT_UPDATE);
-    canvas.setTextDatum(TR_DATUM);
-    if (co2.hasData) {
-        unsigned long elapsedSec = (millis() - co2.lastUpdateMs) / 1000;
-        int updateH = hour;
-        int updateM = minute - (int)(elapsedSec / 60);
-        while (updateM < 0) { updateM += 60; updateH--; }
-        if (updateH < 0) updateH += 24;
-        char buf[32];
-        snprintf(buf, sizeof(buf), "最終更新: %02d:%02d", updateH, updateM);
-        canvas.drawString(buf, SCREEN_W - MARGIN, updateY);
-    }
+    drawLastUpdated(updateY, co2);
 
-    // ========== Section Divider ==========
+    // ========== Divider ==========
     int divY2 = updateY + 32;
     canvas.drawLine(MARGIN, divY2, SCREEN_W - MARGIN, divY2, COL_BLACK);
 
-    // ========== Balcony Section ==========
+    // ========== Outdoor Section ==========
     int sec2Y = divY2 + 20;
 
     canvas.setTextSize(FONT_SECT);
@@ -251,20 +248,8 @@ void displayDraw(const SensorData& co2, const SensorData& outdoor,
         drawLabeledValue(MARGIN + halfW, row2Y, halfW, "湿度", buf, "%");
     }
 
-    // Last updated
     int update2Y = row2Y + FONT_LABEL + 8 + FONT_VALUE + 12;
-    canvas.setTextSize(FONT_UPDATE);
-    canvas.setTextDatum(TR_DATUM);
-    if (outdoor.hasData) {
-        unsigned long elapsedSec = (millis() - outdoor.lastUpdateMs) / 1000;
-        int updateH = hour;
-        int updateM = minute - (int)(elapsedSec / 60);
-        while (updateM < 0) { updateM += 60; updateH--; }
-        if (updateH < 0) updateH += 24;
-        char buf[32];
-        snprintf(buf, sizeof(buf), "最終更新: %02d:%02d", updateH, updateM);
-        canvas.drawString(buf, SCREEN_W - MARGIN, update2Y);
-    }
+    drawLastUpdated(update2Y, outdoor);
 
     canvas.pushCanvas(0, 0, UPDATE_MODE_GC16);
 }
