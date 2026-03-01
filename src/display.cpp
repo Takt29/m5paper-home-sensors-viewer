@@ -18,10 +18,10 @@ static const int FONT_BATT   = 24;
 static const int FONT_SECT   = 32;
 static const int FONT_TAG    = 20;
 static const int FONT_LABEL  = 24;
-static const int FONT_VALUE  = 56;
-static const int FONT_CO2VAL = 84;
+static const int FONT_VALUE  = 80;
+static const int FONT_CO2VAL = 104;
 static const int FONT_CO2LBL = 24;
-static const int FONT_UNIT   = 28;
+static const int FONT_UNIT   = 36;
 static const int FONT_UPDATE = 20;
 
 static const int COL_BLACK = 15;
@@ -136,10 +136,10 @@ void displayInit(bool fullClear) {
         canvas.createRender(FONT_SECT, 128);
         canvas.createRender(FONT_TAG, 128);
         canvas.createRender(FONT_LABEL, 128);
-        canvas.createRender(FONT_VALUE, 64);
-        canvas.createRender(FONT_CO2VAL, 32);
+        canvas.createRender(FONT_VALUE, 32);
+        canvas.createRender(FONT_CO2VAL, 16);
         canvas.createRender(FONT_CO2LBL, 64);
-        canvas.createRender(FONT_UNIT, 64);
+        canvas.createRender(FONT_UNIT, 32);
         canvas.createRender(FONT_UPDATE, 64);
     }
 }
@@ -179,7 +179,7 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
     int cardX = MARGIN;
     int cardY = secY + 50;
     int cardW = SCREEN_W - MARGIN * 2;
-    int cardH = 150;
+    int cardH = 180;
     canvas.fillRoundRect(cardX, cardY, cardW, cardH, 10, COL_GRAY_BG);
 
     canvas.setTextColor(COL_BLACK, COL_GRAY_BG);
@@ -199,7 +199,7 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
         canvas.setTextDatum(BL_DATUM);
         canvas.drawString("ppm", cardX + 60 + co2W + 6, cardY + cardH - 20);
 
-        drawCO2Face(cardX + cardW - 55, cardY + cardH / 2, 32, co2.co2);
+        drawCO2Face(cardX + cardW - 65, cardY + cardH / 2, 40, co2.co2);
     } else {
         canvas.setTextSize(FONT_VALUE);
         canvas.setTextDatum(BL_DATUM);
