@@ -26,7 +26,8 @@ static const int FONT_UPDATE = 20;
 
 static const int COL_BLACK = 15;
 static const int COL_WHITE = 0;
-static const int COL_GRAY_BG = 3;
+static const int COL_GRAY_BG = 1;
+static const int COL_GRAY_DIV = 6;
 
 static void drawBatteryIcon(int x, int y, int pct) {
     canvas.drawRect(x, y, 28, 16, COL_BLACK);
@@ -212,21 +213,30 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
 
     int rowY = cardY + cardH + 20;
     int halfW = (SCREEN_W - MARGIN * 2) / 2;
+    int divPad = 28;
+    int divLineW = 3;
+
+    int valH = FONT_LABEL + 8 + FONT_VALUE;
 
     {
         char buf[8];
         if (co2Fresh) snprintf(buf, sizeof(buf), "%.1f", co2.temperature);
         else snprintf(buf, sizeof(buf), "--.-");
-        drawLabeledValue(MARGIN + 8, rowY, halfW, "気温", buf, "°C");
-    }
-    {
-        char buf[8];
-        if (co2Fresh) snprintf(buf, sizeof(buf), "%.1f", co2.humidity);
-        else snprintf(buf, sizeof(buf), "--.-");
-        drawLabeledValue(MARGIN + halfW, rowY, halfW, "湿度", buf, "%");
+        drawLabeledValue(MARGIN + 8, rowY, halfW - divPad, "気温", buf, "°C");
     }
 
-    int updateY = rowY + FONT_LABEL + 8 + FONT_VALUE + 12;
+    int divLineH = valH * 2 / 3;
+    int divLineTop = rowY + (valH - divLineH) / 2;
+    canvas.fillRect(MARGIN + halfW - divLineW / 2, divLineTop, divLineW, divLineH, COL_GRAY_DIV);
+
+    {
+        char buf[8];
+        if (co2Fresh) snprintf(buf, sizeof(buf), "%d", (int)co2.humidity);
+        else snprintf(buf, sizeof(buf), "--");
+        drawLabeledValue(MARGIN + halfW + divPad, rowY, halfW - divPad, "湿度", buf, "%");
+    }
+
+    int updateY = rowY + valH + 12;
     drawLastUpdated(updateY, co2);
 
     // ========== Divider ==========
@@ -248,16 +258,20 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
         char buf[8];
         if (outdoorFresh) snprintf(buf, sizeof(buf), "%.1f", outdoor.temperature);
         else snprintf(buf, sizeof(buf), "--.-");
-        drawLabeledValue(MARGIN + 8, row2Y, halfW, "気温", buf, "°C");
-    }
-    {
-        char buf[8];
-        if (outdoorFresh) snprintf(buf, sizeof(buf), "%.1f", outdoor.humidity);
-        else snprintf(buf, sizeof(buf), "--.-");
-        drawLabeledValue(MARGIN + halfW, row2Y, halfW, "湿度", buf, "%");
+        drawLabeledValue(MARGIN + 8, row2Y, halfW - divPad, "気温", buf, "°C");
     }
 
-    int update2Y = row2Y + FONT_LABEL + 8 + FONT_VALUE + 12;
+    int divLine2Top = row2Y + (valH - divLineH) / 2;
+    canvas.fillRect(MARGIN + halfW - divLineW / 2, divLine2Top, divLineW, divLineH, COL_GRAY_DIV);
+
+    {
+        char buf[8];
+        if (outdoorFresh) snprintf(buf, sizeof(buf), "%d", (int)outdoor.humidity);
+        else snprintf(buf, sizeof(buf), "--");
+        drawLabeledValue(MARGIN + halfW + divPad, row2Y, halfW - divPad, "湿度", buf, "%");
+    }
+
+    int update2Y = row2Y + valH + 12;
     drawLastUpdated(update2Y, outdoor);
 
     canvas.pushCanvas(0, 0, UPDATE_MODE_GL16);
