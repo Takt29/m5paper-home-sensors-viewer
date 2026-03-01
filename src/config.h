@@ -14,7 +14,6 @@
 // --- Deep sleep ---
 #define SLEEP_DURATION_SEC 300  // 5分
 
-// --- CO2 thresholds for face icon ---
-#define CO2_EXCELLENT 600
+// --- CO2 thresholds for face icon (3段階) ---
 #define CO2_GOOD 1000
-#define CO2_FAIR 1500
+#define CO2_WARNING 1500

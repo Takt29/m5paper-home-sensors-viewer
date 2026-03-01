@@ -46,26 +46,23 @@ static void drawCO2Face(int cx, int cy, int r, uint16_t co2) {
 
     int mouthY = cy + r / 4;
     int mouthW = r / 3;
-    if (co2 <= CO2_EXCELLENT) {
+    if (co2 <= CO2_GOOD) {
+        // 笑顔 (口が下向きのU字)
         for (int dx = -mouthW; dx <= mouthW; dx++) {
-            int dy = (dx * dx * 6) / (mouthW * mouthW);
-            canvas.drawPixel(cx + dx, mouthY + dy, COL_BLACK);
-            canvas.drawPixel(cx + dx, mouthY + dy + 1, COL_BLACK);
+            int dy = -(dx * dx * 4) / (mouthW * mouthW);
+            canvas.drawPixel(cx + dx, mouthY + 6 + dy, COL_BLACK);
+            canvas.drawPixel(cx + dx, mouthY + 7 + dy, COL_BLACK);
         }
-    } else if (co2 <= CO2_GOOD) {
-        for (int dx = -mouthW; dx <= mouthW; dx++) {
-            int dy = (dx * dx * 3) / (mouthW * mouthW);
-            canvas.drawPixel(cx + dx, mouthY + dy, COL_BLACK);
-            canvas.drawPixel(cx + dx, mouthY + dy + 1, COL_BLACK);
-        }
-    } else if (co2 <= CO2_FAIR) {
+    } else if (co2 <= CO2_WARNING) {
+        // 注意 (まっすぐ)
         canvas.drawLine(cx - mouthW, mouthY + 3, cx + mouthW, mouthY + 3, COL_BLACK);
         canvas.drawLine(cx - mouthW, mouthY + 4, cx + mouthW, mouthY + 4, COL_BLACK);
     } else {
+        // 危険 (口が上向きの逆U字)
         for (int dx = -mouthW; dx <= mouthW; dx++) {
-            int dy = -(dx * dx * 3) / (mouthW * mouthW);
-            canvas.drawPixel(cx + dx, mouthY + 6 + dy, COL_BLACK);
-            canvas.drawPixel(cx + dx, mouthY + 7 + dy, COL_BLACK);
+            int dy = (dx * dx * 4) / (mouthW * mouthW);
+            canvas.drawPixel(cx + dx, mouthY + dy, COL_BLACK);
+            canvas.drawPixel(cx + dx, mouthY + dy + 1, COL_BLACK);
         }
     }
 }
