@@ -48,7 +48,6 @@ static void parseOutdoorMeter(BLEAdvertisedDevice& device) {
     outdoorData.temperature = temp;
     outdoorData.humidity = (float)humidity;
     outdoorData.hasData = true;
-    outdoorData.lastUpdateMs = millis();
 
     Serial.printf("[BLE] Outdoor parsed: temp=%.1f, hum=%d\n", temp, humidity);
 }
@@ -74,7 +73,6 @@ static void parseCO2Sensor(BLEAdvertisedDevice& device) {
     co2Data.humidity = (float)humidity;
     co2Data.co2 = co2;
     co2Data.hasData = true;
-    co2Data.lastUpdateMs = millis();
 
     Serial.printf("[BLE] CO2 parsed: temp=%.1f, hum=%d, co2=%d\n", temp, humidity, co2);
 }

@@ -1,6 +1,7 @@
 #include "display.h"
 #include "config.h"
 #include <SPIFFS.h>
+#include <time.h>
 
 static M5EPD_Canvas canvas(&M5.EPD);
 static bool fontLoaded = false;
@@ -93,13 +94,19 @@ static void drawLabeledValue(int x, int y, int colW,
     canvas.drawString(unit, x + vw + 4, y + FONT_LABEL + 8 + FONT_VALUE);
 }
 
+static bool isDataFresh(const DisplaySensorData& data, time_t now) {
+    if (!data.hasData || data.updateTimestamp == 0) return false;
+    return (now - data.updateTimestamp) <= DATA_STALE_SEC;
+}
+
 static void drawLastUpdated(int y, const DisplaySensorData& data) {
     canvas.setTextSize(FONT_UPDATE);
     canvas.setTextDatum(TR_DATUM);
-    if (data.hasData) {
+    if (data.hasData && data.updateTimestamp != 0) {
+        struct tm t;
+        localtime_r(&data.updateTimestamp, &t);
         char buf[32];
-        snprintf(buf, sizeof(buf), "最終更新: %02d:%02d",
-                 data.updateHour, data.updateMin);
+        snprintf(buf, sizeof(buf), "最終更新: %02d:%02d", t.tm_hour, t.tm_min);
         canvas.drawString(buf, SCREEN_W - MARGIN, y);
     }
 }
@@ -138,6 +145,7 @@ void displayInit(bool fullClear) {
 }
 
 void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
+                 time_t nowEpoch,
                  int year, int month, int day, int wday, int batteryPct) {
     canvas.fillCanvas(COL_WHITE);
     canvas.setTextColor(COL_BLACK, COL_WHITE);
@@ -179,7 +187,8 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
     canvas.setTextDatum(TL_DATUM);
     canvas.drawString("CO2濃度", cardX + 20, cardY + 14);
 
-    if (co2.hasData) {
+    bool co2Fresh = isDataFresh(co2, nowEpoch);
+    if (co2Fresh) {
         char co2Buf[8];
         snprintf(co2Buf, sizeof(co2Buf), "%d", co2.co2);
         canvas.setTextSize(FONT_CO2VAL);
@@ -206,13 +215,13 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
 
     {
         char buf[8];
-        if (co2.hasData) snprintf(buf, sizeof(buf), "%.1f", co2.temperature);
+        if (co2Fresh) snprintf(buf, sizeof(buf), "%.1f", co2.temperature);
         else snprintf(buf, sizeof(buf), "--.-");
         drawLabeledValue(MARGIN + 8, rowY, halfW, "気温", buf, "°C");
     }
     {
         char buf[8];
-        if (co2.hasData) snprintf(buf, sizeof(buf), "%.1f", co2.humidity);
+        if (co2Fresh) snprintf(buf, sizeof(buf), "%.1f", co2.humidity);
         else snprintf(buf, sizeof(buf), "--.-");
         drawLabeledValue(MARGIN + halfW, rowY, halfW, "湿度", buf, "%");
     }
@@ -234,15 +243,16 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
 
     int row2Y = sec2Y + 50;
 
+    bool outdoorFresh = isDataFresh(outdoor, nowEpoch);
     {
         char buf[8];
-        if (outdoor.hasData) snprintf(buf, sizeof(buf), "%.1f", outdoor.temperature);
+        if (outdoorFresh) snprintf(buf, sizeof(buf), "%.1f", outdoor.temperature);
         else snprintf(buf, sizeof(buf), "--.-");
         drawLabeledValue(MARGIN + 8, row2Y, halfW, "気温", buf, "°C");
     }
     {
         char buf[8];
-        if (outdoor.hasData) snprintf(buf, sizeof(buf), "%.1f", outdoor.humidity);
+        if (outdoorFresh) snprintf(buf, sizeof(buf), "%.1f", outdoor.humidity);
         else snprintf(buf, sizeof(buf), "--.-");
         drawLabeledValue(MARGIN + halfW, row2Y, halfW, "湿度", buf, "%");
     }

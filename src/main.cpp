@@ -74,16 +74,29 @@ static void enterDeepSleep() {
     esp_deep_sleep_start();
 }
 
+static time_t rtcToEpoch(const rtc_date_t& date, const rtc_time_t& time) {
+    struct tm t = {};
+    t.tm_year = date.year - 1900;
+    t.tm_mon  = date.mon - 1;
+    t.tm_mday = date.day;
+    t.tm_hour = time.hour;
+    t.tm_min  = time.min;
+    t.tm_sec  = time.sec;
+    t.tm_isdst = -1;
+    return mktime(&t);
+}
+
 void setup() {
     M5.begin(false, false, true, true, true);
     bootCount++;
 
+    setenv("TZ", "JST-9", 1);
+    tzset();
+
     Serial.printf("\n==== M5Paper Home Sensors Viewer (boot #%d) ====\n", bootCount);
 
-    // Display initialization
     displayInit(bootCount == 1);
 
-    // NTP synchronization
     bool needNtpSync = (bootCount == 1)
                     || (bootCount % NTP_SYNC_EVERY_N_BOOTS == 0);
 
@@ -104,16 +117,15 @@ void setup() {
     int month  = rtcDate.mon;
     int day    = rtcDate.day;
     int wday   = rtcDate.week;
-    int hour   = rtcTime.hour;
-    int minute = rtcTime.min;
+
+    time_t nowEpoch = rtcToEpoch(rtcDate, rtcTime);
 
     uint32_t battVoltage = M5.getBatteryVoltage();
     int batteryPct = constrain((int)(battVoltage - 3300) * 100 / 1050, 0, 100);
 
     Serial.printf("[Info] %04d/%02d/%02d %02d:%02d, Battery: %d%%\n",
-                  year, month, day, hour, minute, batteryPct);
+                  year, month, day, rtcTime.hour, rtcTime.min, batteryPct);
 
-    // BLE scan
     bleInit();
     bleScan(BLE_SCAN_DURATION_SEC);
     bleStop();
@@ -121,36 +133,35 @@ void setup() {
     SensorData& co2Scan = getCO2SensorData();
     SensorData& outdoorScan = getOutdoorMeterData();
 
-    // 新データが取れたら永続領域を更新、取れなければ前回値をそのまま使う
     if (co2Scan.hasData) {
-        persistCO2.temperature = co2Scan.temperature;
-        persistCO2.humidity    = co2Scan.humidity;
-        persistCO2.co2         = co2Scan.co2;
-        persistCO2.hasData     = true;
-        persistCO2.updateHour  = (int8_t)hour;
-        persistCO2.updateMin   = (int8_t)minute;
+        persistCO2.temperature     = co2Scan.temperature;
+        persistCO2.humidity        = co2Scan.humidity;
+        persistCO2.co2             = co2Scan.co2;
+        persistCO2.hasData         = true;
+        persistCO2.updateTimestamp = nowEpoch;
         Serial.printf("[Data] CO2: temp=%.1f, hum=%.1f, co2=%d (updated)\n",
                       co2Scan.temperature, co2Scan.humidity, co2Scan.co2);
     } else {
-        Serial.printf("[Data] CO2: no new data, using cached (hasData=%d)\n",
-                      persistCO2.hasData);
+        Serial.printf("[Data] CO2: no new data, using cached (hasData=%d, age=%lds)\n",
+                      persistCO2.hasData,
+                      persistCO2.updateTimestamp ? (long)(nowEpoch - persistCO2.updateTimestamp) : -1L);
     }
 
     if (outdoorScan.hasData) {
-        persistOutdoor.temperature = outdoorScan.temperature;
-        persistOutdoor.humidity    = outdoorScan.humidity;
-        persistOutdoor.co2         = 0;
-        persistOutdoor.hasData     = true;
-        persistOutdoor.updateHour  = (int8_t)hour;
-        persistOutdoor.updateMin   = (int8_t)minute;
+        persistOutdoor.temperature     = outdoorScan.temperature;
+        persistOutdoor.humidity        = outdoorScan.humidity;
+        persistOutdoor.co2             = 0;
+        persistOutdoor.hasData         = true;
+        persistOutdoor.updateTimestamp = nowEpoch;
         Serial.printf("[Data] Outdoor: temp=%.1f, hum=%.1f (updated)\n",
                       outdoorScan.temperature, outdoorScan.humidity);
     } else {
-        Serial.printf("[Data] Outdoor: no new data, using cached (hasData=%d)\n",
-                      persistOutdoor.hasData);
+        Serial.printf("[Data] Outdoor: no new data, using cached (hasData=%d, age=%lds)\n",
+                      persistOutdoor.hasData,
+                      persistOutdoor.updateTimestamp ? (long)(nowEpoch - persistOutdoor.updateTimestamp) : -1L);
     }
 
-    displayDraw(persistCO2, persistOutdoor,
+    displayDraw(persistCO2, persistOutdoor, nowEpoch,
                 year, month, day, wday, batteryPct);
 
     delay(2000);
