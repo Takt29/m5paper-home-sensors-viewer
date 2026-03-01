@@ -260,5 +260,5 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
     int update2Y = row2Y + FONT_LABEL + 8 + FONT_VALUE + 12;
     drawLastUpdated(update2Y, outdoor);
 
-    canvas.pushCanvas(0, 0, UPDATE_MODE_GC16);
+    canvas.pushCanvas(0, 0, UPDATE_MODE_GL16);
 }
