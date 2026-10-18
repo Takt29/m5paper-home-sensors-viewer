@@ -97,7 +97,8 @@ static void drawLabeledValue(int x, int y, int colW,
 
 static bool isDataFresh(const DisplaySensorData& data, time_t now) {
     if (!data.hasData || data.updateTimestamp == 0) return false;
-    return (now - data.updateTimestamp) <= DATA_STALE_SEC;
+    const time_t age = now - data.updateTimestamp;
+    return age >= 0 && age <= DATA_STALE_SEC;
 }
 
 static void drawLastUpdated(int y, const DisplaySensorData& data) {

@@ -7,9 +7,10 @@ struct SensorData {
     float humidity;
     uint16_t co2;
     bool hasData;
+    uint32_t receivedAtMs;
 
     SensorData() : temperature(0), humidity(0), co2(0),
-                   hasData(false) {}
+                   hasData(false), receivedAtMs(0) {}
 };
 
 void bleInit();

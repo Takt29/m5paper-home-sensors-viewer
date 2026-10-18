@@ -11,9 +11,9 @@ M5Paper V1.1 で SwitchBot の温湿度計・CO2 センサーのデータを BLE
 
 ## 動作フロー
 
-1. WiFi 接続 → NTP 時刻同期 → RTC 設定 → WiFi 切断
-2. BLE スキャン（30 秒間）でセンサーデータを受信
-3. e-ink ディスプレイに描画
+1. 初回・12 回ごとの起動で WiFi 接続 → NTP の同期完了通知を待つ → RTC 設定 → WiFi 切断（失敗した場合は次の起動で再試行）
+2. BLE スキャン（15 秒間）でセンサーデータと受信タイミングを記録
+3. スキャン後の RTC から現在日時と各センサーの最終受信時刻を求め、e-ink ディスプレイに描画
 4. ディープスリープ（5 分）→ 1 に戻る
 
 ## セットアップ
@@ -84,7 +84,9 @@ pio device monitor
 |------|-------------|------|
 | `NTP_SERVER` | `"ntp.nict.jp"` | NTP サーバー |
 | `GMT_OFFSET_SEC` | `32400` (9h) | タイムゾーンオフセット (JST) |
-| `BLE_SCAN_DURATION_SEC` | `30` | BLE スキャン時間（秒） |
+| `NTP_SYNC_EVERY_N_BOOTS` | `12` | 定期同期の起動間隔（スキャン・描画時間を含むため約 1 時間以上） |
+| `NTP_SYNC_TIMEOUT_MS` | `10000` | 今回の NTP 同期完了を待つ最大時間（ミリ秒） |
+| `BLE_SCAN_DURATION_SEC` | `15` | BLE スキャン時間（秒） |
 | `SLEEP_DURATION_SEC` | `300` | ディープスリープ時間（秒） |
 | `CO2_EXCELLENT` | `600` | CO2 表情アイコン閾値 |
 | `CO2_GOOD` | `1000` | CO2 表情アイコン閾値 |
@@ -108,6 +110,9 @@ pio device monitor
 
 - WiFi の SSID / パスワードが正しいか確認
 - NTP サーバーに到達できるネットワーク環境か確認
+- シリアルログの `[NTP] Fresh response received` が今回の同期完了を示します。続く `[NTP] RTC updated` と `[Info]` の日時を確認してください
+- `[NTP] No fresh response` または WiFi 接続失敗の場合は RTC を維持し、次のスリープ復帰時に再試行します
+- 「最終更新」はセンサーの最終受信時刻です。5 分のスリープ中や受信できなかった場合は以前の時刻が表示されます
 
 ## ライセンス
 

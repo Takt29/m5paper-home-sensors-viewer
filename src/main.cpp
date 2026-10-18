@@ -1,5 +1,7 @@
 #include <M5EPD.h>
 #include <WiFi.h>
+#include <esp_sntp.h>
+#include <atomic>
 #include <time.h>
 #include "config.h"
 #include "ble_scanner.h"
@@ -9,6 +11,14 @@
 RTC_DATA_ATTR static uint32_t bootCount = 0;
 RTC_DATA_ATTR static DisplaySensorData persistCO2 = {};
 RTC_DATA_ATTR static DisplaySensorData persistOutdoor = {};
+RTC_DATA_ATTR static bool ntpSyncPending = true;
+
+// SNTPのコールバックはネットワーク側のタスクから呼ばれる。
+static std::atomic<bool> ntpResponseReceived{false};
+
+static void onNtpTimeSynced(struct timeval*) {
+    ntpResponseReceived.store(true);
+}
 
 static bool syncNTP() {
     Serial.println("[NTP] Connecting to WiFi...");
@@ -30,11 +40,31 @@ static bool syncNTP() {
     }
     Serial.println("[NTP] WiFi connected");
 
+    // getLocalTime()だけでは、スリープ前から残る時刻も成功扱いになる。
+    // 今回のリクエストに対するSNTPの同期完了通知を待つ。
+    esp_sntp_stop();
+    ntpResponseReceived.store(false);
+    sntp_set_sync_mode(SNTP_SYNC_MODE_IMMED);
+    sntp_set_time_sync_notification_cb(onNtpTimeSynced);
+    Serial.printf("[NTP] Waiting for fresh response from %s (system epoch=%ld)\n",
+                  NTP_SERVER, (long)time(nullptr));
+    const uint32_t syncStartedAt = millis();
     configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
 
+    while (!ntpResponseReceived.load()
+           && (uint32_t)(millis() - syncStartedAt) < NTP_SYNC_TIMEOUT_MS) {
+        delay(10);
+    }
+    esp_sntp_stop();
+    sntp_set_time_sync_notification_cb(nullptr);
+
     bool ok = false;
-    struct tm timeinfo;
-    if (getLocalTime(&timeinfo, 10000)) {
+    if (ntpResponseReceived.load()) {
+        const time_t syncedTime = time(nullptr);
+        struct tm timeinfo;
+        localtime_r(&syncedTime, &timeinfo);
+        Serial.printf("[NTP] Fresh response received after %lu ms\n",
+                      (unsigned long)(millis() - syncStartedAt));
         Serial.printf("[NTP] Time: %04d/%02d/%02d %02d:%02d:%02d\n",
                       timeinfo.tm_year + 1900, timeinfo.tm_mon + 1,
                       timeinfo.tm_mday, timeinfo.tm_hour,
@@ -44,19 +74,16 @@ static bool syncNTP() {
         rtcTime.hour = timeinfo.tm_hour;
         rtcTime.min  = timeinfo.tm_min;
         rtcTime.sec  = timeinfo.tm_sec;
-        M5.RTC.setTime(&rtcTime);
 
         rtc_date_t rtcDate;
         rtcDate.year = timeinfo.tm_year + 1900;
         rtcDate.mon  = timeinfo.tm_mon + 1;
         rtcDate.day  = timeinfo.tm_mday;
         rtcDate.week = timeinfo.tm_wday;
-        M5.RTC.setDate(&rtcDate);
-
-        ok = true;
-        Serial.println("[NTP] RTC updated");
+        ok = M5.RTC.setTime(&rtcTime) && M5.RTC.setDate(&rtcDate);
+        Serial.println(ok ? "[NTP] RTC updated" : "[NTP] RTC update failed");
     } else {
-        Serial.println("[NTP] Failed to obtain time");
+        Serial.println("[NTP] No fresh response; keeping RTC unchanged");
     }
 
     WiFi.disconnect(true);
@@ -97,17 +124,28 @@ void setup() {
 
     displayInit(bootCount == 1);
 
-    bool needNtpSync = (bootCount == 1)
+    bool needNtpSync = ntpSyncPending || (bootCount == 1)
                     || (bootCount % NTP_SYNC_EVERY_N_BOOTS == 0);
 
     if (needNtpSync) {
         Serial.println("[NTP] Sync scheduled for this boot");
-        syncNTP();
+        ntpSyncPending = !syncNTP();
+        if (ntpSyncPending) {
+            Serial.println("[NTP] Will retry on next wake");
+        }
     } else {
         Serial.printf("[NTP] Skipped (next sync at boot #%d)\n",
                       ((bootCount / NTP_SYNC_EVERY_N_BOOTS) + 1) * NTP_SYNC_EVERY_N_BOOTS);
     }
 
+    uint32_t battVoltage = M5.getBatteryVoltage();
+    int batteryPct = constrain((int)(battVoltage - 3300) * 100 / 1050, 0, 100);
+
+    bleInit();
+    bleScan(BLE_SCAN_DURATION_SEC);
+    bleStop();
+
+    // 描画用の現在日時はスキャン後に取得する。
     rtc_time_t rtcTime;
     rtc_date_t rtcDate;
     M5.RTC.getTime(&rtcTime);
@@ -119,16 +157,11 @@ void setup() {
     int wday   = rtcDate.week;
 
     time_t nowEpoch = rtcToEpoch(rtcDate, rtcTime);
+    const uint32_t nowMillis = millis();
 
-    uint32_t battVoltage = M5.getBatteryVoltage();
-    int batteryPct = constrain((int)(battVoltage - 3300) * 100 / 1050, 0, 100);
-
-    Serial.printf("[Info] %04d/%02d/%02d %02d:%02d, Battery: %d%%\n",
-                  year, month, day, rtcTime.hour, rtcTime.min, batteryPct);
-
-    bleInit();
-    bleScan(BLE_SCAN_DURATION_SEC);
-    bleStop();
+    Serial.printf("[Info] %04d/%02d/%02d %02d:%02d:%02d JST (epoch=%ld), Battery: %d%%\n",
+                  year, month, day, rtcTime.hour, rtcTime.min, rtcTime.sec,
+                  (long)nowEpoch, batteryPct);
 
     SensorData& co2Scan = getCO2SensorData();
     SensorData& outdoorScan = getOutdoorMeterData();
@@ -138,9 +171,11 @@ void setup() {
         persistCO2.humidity        = co2Scan.humidity;
         persistCO2.co2             = co2Scan.co2;
         persistCO2.hasData         = true;
-        persistCO2.updateTimestamp = nowEpoch;
-        Serial.printf("[Data] CO2: temp=%.1f, hum=%.1f, co2=%d (updated)\n",
-                      co2Scan.temperature, co2Scan.humidity, co2Scan.co2);
+        persistCO2.updateTimestamp = nowEpoch
+            - (time_t)((uint32_t)(nowMillis - co2Scan.receivedAtMs) / 1000);
+        Serial.printf("[Data] CO2: temp=%.1f, hum=%.1f, co2=%d (updated, age=%lds)\n",
+                      co2Scan.temperature, co2Scan.humidity, co2Scan.co2,
+                      (long)(nowEpoch - persistCO2.updateTimestamp));
     } else {
         Serial.printf("[Data] CO2: no new data, using cached (hasData=%d, age=%lds)\n",
                       persistCO2.hasData,
@@ -152,9 +187,11 @@ void setup() {
         persistOutdoor.humidity        = outdoorScan.humidity;
         persistOutdoor.co2             = 0;
         persistOutdoor.hasData         = true;
-        persistOutdoor.updateTimestamp = nowEpoch;
-        Serial.printf("[Data] Outdoor: temp=%.1f, hum=%.1f (updated)\n",
-                      outdoorScan.temperature, outdoorScan.humidity);
+        persistOutdoor.updateTimestamp = nowEpoch
+            - (time_t)((uint32_t)(nowMillis - outdoorScan.receivedAtMs) / 1000);
+        Serial.printf("[Data] Outdoor: temp=%.1f, hum=%.1f (updated, age=%lds)\n",
+                      outdoorScan.temperature, outdoorScan.humidity,
+                      (long)(nowEpoch - persistOutdoor.updateTimestamp));
     } else {
         Serial.printf("[Data] Outdoor: no new data, using cached (hasData=%d, age=%lds)\n",
                       persistOutdoor.hasData,
