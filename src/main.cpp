@@ -3,15 +3,18 @@
 #include <esp_sntp.h>
 #include <atomic>
 #include <time.h>
+#include <sys/time.h>
 #include "config.h"
 #include "ble_scanner.h"
 #include "display.h"
+#include "weather_client.h"
 
 // Deep sleep 後も維持される変数 (esp_deep_sleep_start 使用時のみ有効)
 RTC_DATA_ATTR static uint32_t bootCount = 0;
 RTC_DATA_ATTR static DisplaySensorData persistCO2 = {};
 RTC_DATA_ATTR static DisplaySensorData persistOutdoor = {};
 RTC_DATA_ATTR static bool ntpSyncPending = true;
+RTC_DATA_ATTR static WeatherCache persistWeather = {};
 
 // SNTPのコールバックはネットワーク側のタスクから呼ばれる。
 static std::atomic<bool> ntpResponseReceived{false};
@@ -20,8 +23,8 @@ static void onNtpTimeSynced(struct timeval*) {
     ntpResponseReceived.store(true);
 }
 
-static bool syncNTP() {
-    Serial.println("[NTP] Connecting to WiFi...");
+static bool connectWiFi() {
+    Serial.println("[WiFi] Connecting...");
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
     int retries = 0;
@@ -33,13 +36,14 @@ static bool syncNTP() {
     Serial.println();
 
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("[NTP] WiFi connection failed");
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
+        Serial.println("[WiFi] Connection failed");
         return false;
     }
-    Serial.println("[NTP] WiFi connected");
+    Serial.println("[WiFi] Connected");
+    return true;
+}
 
+static bool syncNTP() {
     // getLocalTime()だけでは、スリープ前から残る時刻も成功扱いになる。
     // 今回のリクエストに対するSNTPの同期完了通知を待つ。
     esp_sntp_stop();
@@ -86,9 +90,6 @@ static bool syncNTP() {
         Serial.println("[NTP] No fresh response; keeping RTC unchanged");
     }
 
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    Serial.println("[NTP] WiFi disconnected");
     return ok;
 }
 
@@ -102,6 +103,8 @@ static void enterDeepSleep() {
 }
 
 static time_t rtcToEpoch(const rtc_date_t& date, const rtc_time_t& time) {
+    if (date.year < 2024 || date.mon < 1 || date.mon > 12 || date.day < 1 ||
+        date.day > 31 || time.hour > 23 || time.min > 59 || time.sec > 59) return 0;
     struct tm t = {};
     t.tm_year = date.year - 1900;
     t.tm_mon  = date.mon - 1;
@@ -124,19 +127,37 @@ void setup() {
 
     displayInit(bootCount == 1);
 
-    bool needNtpSync = ntpSyncPending || (bootCount == 1)
-                    || (bootCount % NTP_SYNC_EVERY_N_BOOTS == 0);
-
-    if (needNtpSync) {
-        Serial.println("[NTP] Sync scheduled for this boot");
-        ntpSyncPending = !syncNTP();
-        if (ntpSyncPending) {
-            Serial.println("[NTP] Will retry on next wake");
-        }
-    } else {
-        Serial.printf("[NTP] Skipped (next sync at boot #%d)\n",
-                      ((bootCount / NTP_SYNC_EVERY_N_BOOTS) + 1) * NTP_SYNC_EVERY_N_BOOTS);
+    // Restore the hardware RTC before HTTPS so certificate dates can be checked,
+    // including boots that do not need a fresh NTP synchronization.
+    rtc_time_t initialTime = {};
+    rtc_date_t initialDate = {};
+    M5.RTC.getTime(&initialTime);
+    M5.RTC.getDate(&initialDate);
+    const time_t initialEpoch = rtcToEpoch(initialDate, initialTime);
+    if (weatherTimeValid(initialEpoch)) {
+        struct timeval tv = {initialEpoch, 0};
+        settimeofday(&tv, nullptr);
     }
+    weatherCheckLocation(persistWeather);
+    bool needNtpSync = ntpSyncPending || (bootCount == 1)
+                    || (bootCount % NTP_SYNC_EVERY_N_BOOTS == 0)
+                    || !weatherTimeValid(initialEpoch);
+    const bool needWeather = weatherConfigured() && weatherNeedsRefresh(persistWeather, initialEpoch);
+
+    if (needNtpSync || needWeather) {
+        if (connectWiFi()) {
+            if (needNtpSync) ntpSyncPending = !syncNTP();
+            if (weatherConfigured() && weatherNeedsRefresh(persistWeather, time(nullptr))) {
+                if (!weatherFetch(persistWeather)) Serial.println("[Weather] Will retry on next wake");
+            }
+        } else if (needNtpSync) {
+            ntpSyncPending = true;
+        }
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+        Serial.println("[WiFi] Disconnected");
+    }
+    if (ntpSyncPending) Serial.println("[NTP] Will retry on next wake");
 
     uint32_t battVoltage = M5.getBatteryVoltage();
     int batteryPct = constrain((int)(battVoltage - 3300) * 100 / 1050, 0, 100);
@@ -146,8 +167,8 @@ void setup() {
     bleStop();
 
     // 描画用の現在日時はスキャン後に取得する。
-    rtc_time_t rtcTime;
-    rtc_date_t rtcDate;
+    rtc_time_t rtcTime = {};
+    rtc_date_t rtcDate = {};
     M5.RTC.getTime(&rtcTime);
     M5.RTC.getDate(&rtcDate);
 
@@ -198,7 +219,8 @@ void setup() {
                       persistOutdoor.updateTimestamp ? (long)(nowEpoch - persistOutdoor.updateTimestamp) : -1L);
     }
 
-    displayDraw(persistCO2, persistOutdoor, nowEpoch,
+    const DisplayWeatherData weather = weatherForDisplay(persistWeather, nowEpoch);
+    displayDraw(persistCO2, persistOutdoor, weather, nowEpoch,
                 year, month, day, wday, batteryPct);
 
     delay(2000);
