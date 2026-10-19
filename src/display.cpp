@@ -17,19 +17,27 @@ static const int FONT_BATT   = 24;
 static const int FONT_SECT   = 32;
 static const int FONT_TAG    = 20;
 static const int FONT_LABEL  = 24;
-static const int FONT_VALUE  = 72;
-static const int FONT_CO2VAL = 86;
+static const int FONT_VALUE  = 80;
+static const int FONT_CO2VAL = 104;
 static const int FONT_CO2LBL = 24;
 static const int FONT_UNIT   = 36;
 static const int FONT_UPDATE = 20;
-static const int FONT_FORECAST = 64;
+static const int FONT_FORECAST = 52;
 static const int FONT_DAILY_RAIN = 84;
 static const int FONT_WINDOW_RAIN = 52;
+static const int WEATHER_TOP = 716;
 
 static const int COL_BLACK = 15;
 static const int COL_WHITE = 0;
 static const int COL_GRAY_BG = 1;
 static const int COL_GRAY_DIV = 6;
+
+static void setFontSize(int size) {
+    canvas.setTextSize(size);
+    // M5EPD resets these margins on every size change, including the same size.
+    // Keep each text background within its own row so it cannot erase labels.
+    canvas.setTextFillMargin(0, 0, 0, 0);
+}
 
 static void drawBatteryIcon(int x, int y, int pct) {
     canvas.drawRect(x, y, 28, 16, COL_BLACK);
@@ -72,7 +80,7 @@ static void drawCO2Face(int cx, int cy, int r, uint16_t co2) {
 }
 
 static void drawTagRight(int rightX, int y, const char* text) {
-    canvas.setTextSize(FONT_TAG);
+    setFontSize(FONT_TAG);
     canvas.setTextDatum(TR_DATUM);
     int px = 12, py = 6;
     int tw = canvas.drawString(text, rightX - px, y + py + 4); // 日本語フォントの中心線のずれを調整 (TODO: フォントサイズを考慮する)
@@ -84,15 +92,15 @@ static void drawTagRight(int rightX, int y, const char* text) {
 static void drawLabeledValue(int x, int y,
                              const char* label, const char* value,
                              const char* unit) {
-    canvas.setTextSize(FONT_LABEL);
+    setFontSize(FONT_LABEL);
     canvas.setTextDatum(TL_DATUM);
     canvas.drawString(label, x, y);
 
-    canvas.setTextSize(FONT_VALUE);
+    setFontSize(FONT_VALUE);
     canvas.setTextDatum(TL_DATUM);
     int vw = canvas.drawString(value, x, y + FONT_LABEL + 8);
 
-    canvas.setTextSize(FONT_UNIT);
+    setFontSize(FONT_UNIT);
     canvas.setTextDatum(BL_DATUM);
     canvas.drawString(unit, x + vw + 4, y + FONT_LABEL + 8 + FONT_VALUE);
 }
@@ -126,7 +134,7 @@ static void drawCloud(int x, int y) {
 
 static void drawWeatherIcon(int x, int y, WeatherIcon icon) {
     if (icon == WeatherIcon::Unknown) {
-        canvas.setTextSize(FONT_FORECAST);
+        setFontSize(FONT_FORECAST);
         canvas.setTextDatum(CC_DATUM);
         canvas.drawString("--", x + 48, y + 48);
         return;
@@ -155,58 +163,57 @@ static void drawWeatherIcon(int x, int y, WeatherIcon icon) {
     }
 }
 
-static void drawForecastTemperature(int rightX, int centerX, const char* label, bool available, int value) {
-    canvas.setTextSize(FONT_LABEL);
+static void drawWeatherValue(int centerX, int bottomY, int size, const char* value, const char* unit) {
+    // M5EPD's textWidth() returns zero for TTF fonts; use drawString's advance.
+    const int numberCenter = centerX - (FONT_LABEL + 3) / 2;
+    setFontSize(size);
+    canvas.setTextDatum(BC_DATUM);
+    const int valueWidth = canvas.drawString(value, numberCenter, bottomY);
+    setFontSize(FONT_LABEL);
+    canvas.setTextDatum(BL_DATUM);
+    canvas.drawString(unit, numberCenter + (valueWidth + 1) / 2 + 3,
+                      bottomY - (size - FONT_LABEL) / 4);
+}
+
+static void drawForecastTemperature(int centerX, const char* label, bool available, int value) {
+    setFontSize(FONT_LABEL);
     canvas.setTextDatum(TC_DATUM);
-    canvas.drawString(label, centerX, 700);
+    canvas.drawString(label, centerX, WEATHER_TOP + 140);
     char text[12];
     if (available) snprintf(text, sizeof(text), "%d", value);
     else snprintf(text, sizeof(text), "--");
-    canvas.setTextSize(FONT_FORECAST);
-    canvas.setTextDatum(BR_DATUM);
-    canvas.drawString(text, rightX, 794);
-    canvas.setTextSize(FONT_LABEL);
-    canvas.setTextDatum(BL_DATUM);
-    canvas.drawString("°C", rightX + 2, 788);
+    drawWeatherValue(centerX, WEATHER_TOP + 224, FONT_FORECAST, text, "°C");
 }
 
-static void drawProbability(int rightX, int bottomY, int size, int probability) {
+static void drawProbability(int centerX, int bottomY, int size, int probability) {
     char text[8];
     if (probability >= 0) snprintf(text, sizeof(text), "%d", probability);
     else snprintf(text, sizeof(text), "--");
-    canvas.setTextSize(size);
-    canvas.setTextDatum(BR_DATUM);
-    canvas.drawString(text, rightX, bottomY);
-    canvas.setTextSize(FONT_LABEL);
-    canvas.setTextDatum(BL_DATUM);
-    canvas.drawString("%", rightX + 3, bottomY - 5);
+    drawWeatherValue(centerX, bottomY, size, text, "%");
 }
 
 static void drawWeather(const DisplayWeatherData& weather) {
-    canvas.fillRect(MARGIN, 648, SCREEN_W - 2 * MARGIN, 2, COL_BLACK);
-    canvas.setTextSize(FONT_SECT);
+    canvas.fillRect(MARGIN, WEATHER_TOP, SCREEN_W - 2 * MARGIN, 2, COL_BLACK);
+    setFontSize(FONT_SECT);
     canvas.setTextDatum(TL_DATUM);
-    canvas.drawString(weather.tomorrow ? "明日の天気" : "今日の天気", MARGIN, 658);
-    canvas.setTextSize(FONT_UPDATE);
-    canvas.setTextDatum(TR_DATUM);
-    canvas.drawString("Open-Meteo.com", SCREEN_W - MARGIN, 668);
-
-    drawWeatherIcon(58, 698, weather.icon);
-    drawForecastTemperature(300, 270, "最高", weather.hasMaxTemp, weather.maxTemp);
-    drawForecastTemperature(464, 434, "最低", weather.hasMinTemp, weather.minTemp);
-    canvas.setTextSize(FONT_LABEL);
-    canvas.setTextDatum(TL_DATUM);
-    canvas.drawString("降水確率", MARGIN, 800);
+    canvas.drawString(weather.tomorrow ? "明日の天気" : "今日の天気", MARGIN, WEATHER_TOP + 12);
+    // Two columns share a bottom row: temperatures left, four-hour rain right.
+    drawWeatherIcon(90, WEATHER_TOP + 44, weather.icon);
+    drawForecastTemperature(82, "最高", weather.hasMaxTemp, weather.maxTemp);
+    drawForecastTemperature(204, "最低", weather.hasMinTemp, weather.minTemp);
+    canvas.drawLine(270, WEATHER_TOP + 50, 270, WEATHER_TOP + 210, COL_GRAY_DIV);
+    setFontSize(FONT_LABEL);
     canvas.setTextDatum(TC_DATUM);
-    canvas.drawString(weather.tomorrow ? "明日" : "今日", 120, 832);
-    canvas.drawLine(216, 834, 216, 946, COL_GRAY_DIV);
-    drawProbability(176, 946, FONT_DAILY_RAIN, weather.probability);
+    canvas.drawString(weather.tomorrow ? "明日の降水確率" : "今日の降水確率", 400, WEATHER_TOP + 18);
+    drawProbability(400, WEATHER_TOP + 140, FONT_DAILY_RAIN, weather.probability);
+    canvas.drawLine(400, WEATHER_TOP + 142, 400, WEATHER_TOP + 210, COL_GRAY_DIV);
 
     for (int i = 0; i < 2; ++i) {
-        canvas.setTextSize(FONT_LABEL);
-        canvas.setTextDatum(TL_DATUM);
-        canvas.drawString(weather.windowLabel[i], 238, 846 + i * 50);
-        drawProbability(488, 882 + i * 50, FONT_WINDOW_RAIN, weather.windowProbability[i]);
+        const int centerX = 342 + i * 116;
+        setFontSize(FONT_LABEL);
+        canvas.setTextDatum(TC_DATUM);
+        canvas.drawString(weather.windowLabel[i], centerX, WEATHER_TOP + 140);
+        drawProbability(centerX, WEATHER_TOP + 224, FONT_WINDOW_RAIN, weather.windowProbability[i]);
     }
     char updated[40] = "最終更新: --:--";
     if (weather.updatedAt != 0) {
@@ -214,7 +221,9 @@ static void drawWeather(const DisplayWeatherData& weather) {
         localtime_r(&weather.updatedAt, &t);
         snprintf(updated, sizeof(updated), "最終更新: %02d:%02d", t.tm_hour, t.tm_min);
     }
-    canvas.setTextSize(FONT_UPDATE);
+    setFontSize(FONT_UPDATE);
+    canvas.setTextDatum(TL_DATUM);
+    canvas.drawString("Open-Meteo.com", MARGIN, 938);
     canvas.setTextDatum(TR_DATUM);
     canvas.drawString(updated, SCREEN_W - MARGIN, 938);
 }
@@ -226,7 +235,7 @@ static bool isDataFresh(const DisplaySensorData& data, time_t now) {
 }
 
 static void drawLastUpdated(int y, const DisplaySensorData& data) {
-    canvas.setTextSize(FONT_UPDATE);
+    setFontSize(FONT_UPDATE);
     canvas.setTextDatum(TR_DATUM);
     if (data.hasData && data.updateTimestamp != 0) {
         struct tm t;
@@ -257,8 +266,6 @@ void displayInit(bool fullClear) {
     }
 
     if (fontLoaded) {
-        // Tight rows must not erase adjacent text with the font's default padding.
-        canvas.setTextFillMargin(0, 0, 0, 0);
         canvas.createRender(FONT_DATE, 128);
         canvas.createRender(FONT_BATT, 64);
         canvas.createRender(FONT_SECT, 128);
@@ -271,7 +278,7 @@ void displayInit(bool fullClear) {
         canvas.createRender(FONT_UPDATE, 64);
         canvas.createRender(FONT_FORECAST, 16);
         canvas.createRender(FONT_DAILY_RAIN, 16);
-        canvas.createRender(FONT_WINDOW_RAIN, 16);
+        if (FONT_WINDOW_RAIN != FONT_FORECAST) canvas.createRender(FONT_WINDOW_RAIN, 16);
     }
 }
 
@@ -283,14 +290,14 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
     canvas.setTextColor(COL_BLACK, COL_WHITE);
 
     // ========== Header ==========
-    canvas.setTextSize(FONT_DATE);
+    setFontSize(FONT_DATE);
     canvas.setTextDatum(TL_DATUM);
     char dateBuf[32];
     snprintf(dateBuf, sizeof(dateBuf), "%04d/%02d/%02d (%s)",
              year, month, day, WEEKDAY_JP[wday % 7]);
     canvas.drawString(dateBuf, MARGIN, 20);
 
-    canvas.setTextSize(FONT_BATT);
+    setFontSize(FONT_BATT);
     canvas.setTextDatum(TR_DATUM);
     char battBuf[8];
     snprintf(battBuf, sizeof(battBuf), "%d%%", batteryPct);
@@ -301,21 +308,21 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
     canvas.fillRect(MARGIN, divY1, SCREEN_W - MARGIN * 2, 4, COL_BLACK);
 
     // ========== CO2 Sensor Section ==========
-    int secY = 90;
+    int secY = 100;
 
-    canvas.setTextSize(FONT_SECT);
+    setFontSize(FONT_SECT);
     canvas.setTextDatum(TL_DATUM);
     canvas.drawString(CO2_SENSOR_LOCATION, MARGIN + 8, secY);
     drawTagRight(SCREEN_W - MARGIN, secY - 2, "CO2センサー");
 
     int cardX = MARGIN;
-    int cardY = 134;
+    int cardY = 144;
     int cardW = SCREEN_W - MARGIN * 2;
-    int cardH = 134;
+    int cardH = 164;
     canvas.fillRoundRect(cardX, cardY, cardW, cardH, 10, COL_GRAY_BG);
 
     canvas.setTextColor(COL_BLACK, COL_GRAY_BG);
-    canvas.setTextSize(FONT_CO2LBL);
+    setFontSize(FONT_CO2LBL);
     canvas.setTextDatum(TL_DATUM);
     canvas.drawString("CO2濃度", cardX + 20, cardY + 14);
 
@@ -323,26 +330,26 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
     if (co2Fresh) {
         char co2Buf[8];
         snprintf(co2Buf, sizeof(co2Buf), "%d", co2.co2);
-        canvas.setTextSize(FONT_CO2VAL);
+        setFontSize(FONT_CO2VAL);
         canvas.setTextDatum(BL_DATUM);
-        int co2W = canvas.drawString(co2Buf, cardX + 60, cardY + cardH - 8);
+        int co2W = canvas.drawString(co2Buf, cardX + 60, cardY + cardH - 14);
 
-        canvas.setTextSize(FONT_SECT);
+        setFontSize(FONT_SECT);
         canvas.setTextDatum(BL_DATUM);
-        canvas.drawString("ppm", cardX + 60 + co2W + 6, cardY + cardH - 14);
+        canvas.drawString("ppm", cardX + 60 + co2W + 6, cardY + cardH - 20);
 
         drawCO2Face(cardX + cardW - 65, cardY + cardH / 2, 34, co2.co2);
     } else {
-        canvas.setTextSize(FONT_VALUE);
+        setFontSize(FONT_VALUE);
         canvas.setTextDatum(BL_DATUM);
         int w = canvas.drawString("---", cardX + 60, cardY + cardH - 24);
-        canvas.setTextSize(FONT_SECT);
+        setFontSize(FONT_SECT);
         canvas.drawString("ppm", cardX + 60 + w + 6, cardY + cardH - 28);
     }
 
     canvas.setTextColor(COL_BLACK, COL_WHITE);
 
-    int rowY = 284;
+    int rowY = cardY + cardH + 20;
     int halfW = (SCREEN_W - MARGIN * 2) / 2;
     int divPad = 28;
     int divLineW = 3;
@@ -371,18 +378,18 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
     drawLastUpdated(updateY, co2);
 
     // ========== Divider ==========
-    int divY2 = 438;
+    int divY2 = 488;
     canvas.drawLine(MARGIN, divY2, SCREEN_W - MARGIN, divY2, COL_BLACK);
 
     // ========== Outdoor Section ==========
-    int sec2Y = 458;
+    int sec2Y = 512;
 
-    canvas.setTextSize(FONT_SECT);
+    setFontSize(FONT_SECT);
     canvas.setTextDatum(TL_DATUM);
     canvas.drawString(OUTDOOR_METER_LOCATION, MARGIN + 8, sec2Y);
     drawTagRight(SCREEN_W - MARGIN, sec2Y - 2, "防水温湿度計");
 
-    int row2Y = 504;
+    int row2Y = 560;
 
     bool outdoorFresh = isDataFresh(outdoor, nowEpoch);
     {
@@ -402,7 +409,7 @@ void displayDraw(const DisplaySensorData& co2, const DisplaySensorData& outdoor,
         drawLabeledValue(MARGIN + halfW + divPad, row2Y, "湿度", buf, "%");
     }
 
-    int update2Y = 614;
+    int update2Y = row2Y + valH + 12;
     drawLastUpdated(update2Y, outdoor);
 
     drawWeather(weather);
