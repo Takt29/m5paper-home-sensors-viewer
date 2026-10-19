@@ -124,7 +124,7 @@ HTTPSはESP-IDFに同梱されたルート証明書群で検証します。RTC�
 
 ### 出典
 
-画面右上に **Open-Meteo.com** を表示します。Weather data by [Open-Meteo.com](https://open-meteo.com/)、天気・気温の原データは [JMA](https://www.jma.go.jp/) です。データは [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) に基づき利用します（[Open-Meteoのライセンス](https://open-meteo.com/en/licence)、[気象庁の利用規約](https://www.jma.go.jp/jma/kishou/info/coment.html)）。このアプリは気温の丸め、天気コードのアイコン化、時間別降水確率の4時間ごとの最大値集計を行っています。
+天気欄の左下に **Open-Meteo.com**、右下に最終更新時刻を表示します。Weather data by [Open-Meteo.com](https://open-meteo.com/)、天気・気温の原データは [JMA](https://www.jma.go.jp/) です。データは [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) に基づき利用します（[Open-Meteoのライセンス](https://open-meteo.com/en/licence)、[気象庁の利用規約](https://www.jma.go.jp/jma/kishou/info/coment.html)）。このアプリは気温の丸め、天気コードのアイコン化、時間別降水確率の4時間ごとの最大値集計を行っています。
 
 ## 開発時の検証
 
